@@ -16,7 +16,7 @@ export default function PasswordResetForm() {
       });
 
       const data = await res.json();
-      if (data.success) setMessage("Password reset email sent!");
+      if (data.success) setMessage("Password reset email sent successfully!");
       else setMessage("Error: " + data.error);
     } catch (err) {
       console.error(err);
@@ -25,16 +25,30 @@ export default function PasswordResetForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} style={{ maxWidth: "400px", margin: "auto" }}>
+      <h2>Password Reset</h2>
       <input
         type="email"
         placeholder="Enter your email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
+        style={{ width: "100%", padding: "10px", marginBottom: "10px" }}
       />
-      <button type="submit">Send Reset Email</button>
-      <p>{message}</p>
+      <button
+        type="submit"
+        style={{
+          width: "100%",
+          padding: "10px",
+          backgroundColor: "#4CAF50",
+          color: "white",
+          border: "none",
+          borderRadius: "5px",
+        }}
+      >
+        Send Reset Email
+      </button>
+      <p style={{ marginTop: "10px", color: "#333" }}>{message}</p>
     </form>
   );
 }
