@@ -1,10 +1,10 @@
 import nodemailer from "nodemailer";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import admin from "firebase-admin";
 
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
+// Firebase Admin init
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
@@ -13,36 +13,58 @@ if (!getApps().length) {
 }
 
 export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
   const { email } = req.body;
+  if (!email) return res.status(400).send("Email is required");
 
   try {
-    // 1. Get Firebase reset link
-    const resetLink = await getAuth().generatePasswordResetLink(email);
+    // 1️⃣ Firebase Auth থেকে user fetch
+    const authUser = await admin.auth().getUserByEmail(email);
 
-    // 2. Send your custom email
+    // 2️⃣ Firestore থেকে user details fetch
+    const userDoc = await admin.firestore().collection("users").doc(authUser.uid).get();
+    const userData = userDoc.exists ? userDoc.data() : {};
+    const fullName = userData.fullName || authUser.displayName || "User";
+    const username = userData.username || "N/A";
+
+    // 3️⃣ Generate password reset link
+    const resetLink = await admin.auth().generatePasswordResetLink(email);
+
+    // 4️⃣ Nodemailer transporter
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
+      host: "smtp-relay.brevo.com",
       port: 587,
+      secure: false,
       auth: {
-        user: process.env.SMTP_LOGIN,
-        pass: process.env.SMTP_PASSWORD,
+        user: process.env.BREVO_USER,
+        pass: process.env.BREVO_PASS,
       },
     });
 
+    // 5️⃣ HTML Email template
+    const html = `
+      <p>Hello ${fullName},</p>
+      <p>You requested a password reset for your TakeSell Pricing Tool account.</p>
+      <p>Your Details:</p>
+      <p>Email: <strong>${email}</strong><br>
+      Username: <strong>${username}</strong></p>
+      <p><a href="${resetLink}" style="background:#4CAF50;color:white;padding:10px 15px;text-decoration:none;border-radius:5px;">Reset Password</a></p>
+      <p>If you didn’t request this, ignore this email.</p>
+      <p>Thanks,<br>TAKESELL PRICING TOOL Team</p>
+    `;
+
+    // 6️⃣ Send email
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
+      from: `TakeSell Pricing Tool <${process.env.BREVO_USER}>`,
       to: email,
       subject: "Reset Your Password",
-      html: `
-        <h2>Reset Your Password</h2>
-        <p>Click the button below to reset your password:</p>
-        <a href="${resetLink}" style="padding:10px 20px;background:#4f46e5;color:white;border-radius:5px;text-decoration:none;">Reset Password</a>
-        <p>If you did not request this, ignore this email.</p>
-      `,
+      html,
     });
 
-    return res.status(200).json({ success: true });
+    res.status(200).json({ success: true });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 }
