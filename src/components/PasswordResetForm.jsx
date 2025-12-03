@@ -3,52 +3,56 @@ import { useState } from "react";
 export default function PasswordResetForm() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleReset = async (e) => {
     e.preventDefault();
-    setMessage("Sending...");
+    setMessage("");
+    setLoading(true);
 
     try {
       const res = await fetch("/api/sendResetEmail", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ email }),
       });
 
       const data = await res.json();
-      if (data.success) setMessage("Password reset email sent successfully!");
-      else setMessage("Error: " + data.error);
+
+      if (!res.ok) throw new Error(data.error || "Something went wrong");
+
+      setMessage("Password reset email sent! Check your inbox.");
     } catch (err) {
-      console.error(err);
-      setMessage("Something went wrong!");
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ maxWidth: "400px", margin: "auto" }}>
-      <h2>Password Reset</h2>
+    <form onSubmit={handleReset} className="p-4">
+      <h2 className="text-lg mb-3 font-semibold">Reset Password</h2>
+
       <input
         type="email"
+        className="border p-2 w-full mb-3"
         placeholder="Enter your email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
-        style={{ width: "100%", padding: "10px", marginBottom: "10px" }}
       />
+
       <button
         type="submit"
-        style={{
-          width: "100%",
-          padding: "10px",
-          backgroundColor: "#4CAF50",
-          color: "white",
-          border: "none",
-          borderRadius: "5px",
-        }}
+        disabled={loading}
+        className="bg-blue-600 text-white px-4 py-2 rounded"
       >
-        Send Reset Email
+        {loading ? "Sending..." : "Send Reset Email"}
       </button>
-      <p style={{ marginTop: "10px", color: "#333" }}>{message}</p>
+
+      {message && <p className="mt-3">{message}</p>}
     </form>
   );
 }
