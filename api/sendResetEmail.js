@@ -2,14 +2,11 @@ import nodemailer from "nodemailer";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-// Initialize Firebase Admin
+// Initialize Firebase Admin using JSON env variable
 if (!getApps().length) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
   initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-    }),
+    credential: cert(serviceAccount),
   });
 }
 
@@ -19,44 +16,37 @@ export default async function handler(req, res) {
   }
 
   const { email } = req.body;
-
-  if (!email) {
-    return res.status(400).json({ error: "Email is required" });
-  }
+  if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
-    // 🔍 1. Check if email exists in Firebase Authentication
+    // Check if email exists
     try {
       await getAuth().getUserByEmail(email);
     } catch (error) {
       if (error.code === "auth/user-not-found") {
         return res.status(404).json({ error: "No account exists with this email." });
       }
-      throw error; // Other unknown Firebase errors
+      throw error;
     }
 
-    // 🔗 2. Generate password reset link
+    // Generate password reset link
     const resetLink = await getAuth().generatePasswordResetLink(email);
 
-    // ✉️ 3. Send email using Nodemailer (Brevo SMTP)
+    // Send email via Nodemailer + Brevo SMTP
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: 587,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     });
 
     const htmlTemplate = `
       <h2>Password Reset</h2>
-      <p>You requested a password reset. Click the button below:</p>
+      <p>Click below to reset your password:</p>
       <a href="${resetLink}" 
-         style="padding: 10px 20px; background:#007bff; color:#fff; 
-                text-decoration:none; border-radius:5px;">
+         style="padding: 10px 20px; background:#007bff; color:#fff; text-decoration:none; border-radius:5px;">
          Reset Password
       </a>
-      <p>If you didn’t request this, you can safely ignore this email.</p>
+      <p>If you didn't request this, ignore this email.</p>
     `;
 
     await transporter.sendMail({
@@ -67,9 +57,8 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json({ success: true, message: "Reset email sent!" });
-
   } catch (error) {
-    console.error("SERVER ERROR:", error);
+    console.error(error);
     return res.status(500).json({ error: error.message });
   }
 }
