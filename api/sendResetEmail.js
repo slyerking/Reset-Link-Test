@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
+// Initialize Firebase Admin
 if (!getApps().length) {
   initializeApp({
     credential: cert({
@@ -18,13 +19,26 @@ export default async function handler(req, res) {
   }
 
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Email is required" });
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
+  }
 
   try {
-    // Generate Firebase password reset link
+    // 🔍 1. Check if email exists in Firebase Authentication
+    try {
+      await getAuth().getUserByEmail(email);
+    } catch (error) {
+      if (error.code === "auth/user-not-found") {
+        return res.status(404).json({ error: "No account exists with this email." });
+      }
+      throw error; // Other unknown Firebase errors
+    }
+
+    // 🔗 2. Generate password reset link
     const resetLink = await getAuth().generatePasswordResetLink(email);
 
-    // Send Email via Brevo SMTP
+    // ✉️ 3. Send email using Nodemailer (Brevo SMTP)
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: 587,
@@ -36,11 +50,13 @@ export default async function handler(req, res) {
 
     const htmlTemplate = `
       <h2>Password Reset</h2>
-      <p>Click the button below to reset your password:</p>
+      <p>You requested a password reset. Click the button below:</p>
       <a href="${resetLink}" 
-         style="padding: 10px 20px; background:#007bff; color:#fff; text-decoration:none; border-radius:5px;">
+         style="padding: 10px 20px; background:#007bff; color:#fff; 
+                text-decoration:none; border-radius:5px;">
          Reset Password
       </a>
+      <p>If you didn’t request this, you can safely ignore this email.</p>
     `;
 
     await transporter.sendMail({
@@ -51,8 +67,9 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json({ success: true, message: "Reset email sent!" });
+
   } catch (error) {
-    console.error(error);
+    console.error("SERVER ERROR:", error);
     return res.status(500).json({ error: error.message });
   }
 }
